@@ -1,0 +1,93 @@
+#!/bin/bash
+
+COOKIE_FILE="cookie.txt"
+BASE_URL=""
+API_KEY=""
+FORMAT="json"
+
+# Function to connect and create session
+connect_session() {
+    echo "Connecting to $BASE_URL with API Key..."
+    curl -X POST --cookie "NSSESSIONID=$API_KEY" -k "$BASE_URL/ng1api/rest-sessions" -c "$COOKIE_FILE"
+    echo -e "\nSession established and cookie saved to $COOKIE_FILE"
+}
+
+# Function to disconnect session
+disconnect_session() {
+    echo "Disconnecting session..."
+    curl -X POST -b "$COOKIE_FILE" -k "$BASE_URL/ng1api/rest-sessions/close"
+    rm -f "$COOKIE_FILE"
+    echo "Session closed and cookie file deleted."
+}
+
+# Function to select base URL and API Key
+set_credentials() {
+    read -p "Enter nGeniusONE server base URL (e.g., https://44.213.223.244:443): " BASE_URL
+    read -p "Paste API Key: " API_KEY
+}
+
+# Function to choose data format
+choose_format() {
+    read -p "Choose format (json/xml): " FORMAT
+}
+
+# Function to execute any GET request with optional output file
+execute_get() {
+    local ENDPOINT="$1"
+    local OUTFILE="$2"
+    echo "Querying: $BASE_URL$ENDPOINT"
+    curl -X GET -b "$COOKIE_FILE" -k "$BASE_URL$ENDPOINT" -H "Content-Type:application/$FORMAT" | jq . > "$OUTFILE"
+    echo "Output saved to $OUTFILE"
+}
+
+# Menu of specific API tasks
+run_api_menu() {
+    echo "1) Get All Devices"
+    echo "2) Get Selected Device Info (name, IP, SN, version, status)"
+    echo "3) Get Server Health"
+    echo "4) Get Local Server Disk Usage"
+    echo "5) Get All Device Health"
+    echo "6) Get Interfaces for DC-Inf"
+    echo "7) Get All Server-Based Applications"
+    echo "8) Back to Main Menu"
+    read -p "Select an API action: " API_CHOICE
+
+    case $API_CHOICE in
+        1) execute_get "/ng1api/ncm/devices" "devices.txt" ;;
+        2) curl -X GET -b "$COOKIE_FILE" -k "$BASE_URL/ng1api/ncm/devices" -H "Content-Type:application/json" \
+            | jq -r '.deviceConfigurations[] | {deviceName, deviceIPAddress, serialNo, version, status}' > devices1.txt
+           echo "Filtered output saved to devices1.txt" ;;
+        3) execute_get "/ng1api/ncm/serverhealth/" "server_health.txt" ;;
+        4) execute_get "/ng1api/ncm/serverhealth/LocalServer/?disk=true" "localserver_disk.txt" ;;
+        5) execute_get "/ng1api/ncm/instrumentationhealth" "device_health.txt" ;;
+        6) execute_get "/ng1api/ncm/devices/DC-Inf/interfaces" "device_interfaces.txt" ;;
+        7) curl -X GET -b "$COOKIE_FILE" -k "$BASE_URL/ng1api/ncm/applications" -H "Content-Type:application/json" \
+            | jq -r '.applicationConfigurations | map(select(.applicationType == "Server-based Apps"))' > server_based_apps.txt
+           echo "Filtered Server-based Apps saved to server_based_apps.txt" ;;
+        8) return ;;
+        *) echo "Invalid option." ;;
+    esac
+}
+
+# Main menu
+while true; do
+    echo -e "\nMain Menu"
+    echo "1) Set Server URL and API Key"
+    echo "2) Set Response Format (Current: $FORMAT)"
+    echo "3) Connect Session"
+    echo "4) Run API Query"
+    echo "5) Disconnect Session"
+    echo "6) Exit"
+    read -p "Choose an option: " CHOICE
+
+    case $CHOICE in
+        1) set_credentials ;;
+        2) choose_format ;;
+        3) connect_session ;;
+        4) run_api_menu ;;
+        5) disconnect_session ;;
+        6) echo "Goodbye."; exit 0 ;;
+        *) echo "Invalid choice." ;;
+    esac
+done
+
